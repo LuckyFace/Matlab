@@ -33,15 +33,25 @@ for iFile = 1:nFile
     cd(fileparts(eventFiles{iFile}));
     
     [timeStamp, eventString] = Nlx2MatEV(eventFiles{iFile}, [1 0 0 0 1], 0, 1, []);
-    timeStamp = timeStamp';
+    timeStamp = timeStamp'/1000; % unit: msec
+    
+    % Epoch
+    recStart = find(strcmp(eventString,'Starting Recording'));
+    recEnd = find(strcmp(eventString,'Stopping Recording'));
+    baseTime = timeStamp([recStart(1),recEnd(1)]);
+    taskTime = timeStamp([recStart(2),recEnd(2)]);
     
     % Task
     trialOnsetIndex = strncmp(eventString, 'Cue', 3);
     trialOffsetIndex = strcmp(eventString, 'Baseline');
     rewardIndex = strcmp(eventString, 'Reward') | strcmp(eventString, 'Non-reward');
-    offsetIndex = reshape(find(strncmp(eventString, 'TTL Input on AcqSystem1_0 board 0 port 2', 40)), 3, []);
+    offsetTemp = find(strncmp(eventString, 'TTL Input on AcqSystem1_0 board 0 port 2', 40));
+    offsetIndex = reshape(offsetTemp(1:(end-1)), 3, []);
     lickOnsetIndex = strcmp(eventString, 'Sensor');
     lickOffsetIndex = strncmp(eventString, 'TTL Input on AcqSystem1_0 board 0 port 3', 40);
+    blueOnsetIndex = strcmp(eventString, 'Blue');
+    redOnsetIndex = strcmp(eventString, 'Red');
+    lightOffsetIndex = strncmp(eventString, 'TTL Input on AcqSystem1_0 board 0 port 1', 40);
     
     nTrial = sum(trialOnsetIndex);
     
@@ -53,10 +63,12 @@ for iFile = 1:nFile
     lickOnsetTime = timeStamp(lickOnsetIndex);
     lickOffsetTime = timeStamp(lickOffsetIndex);
     trialTime = timeStamp(trialOffsetIndex);
+    blueOnsetTime = timeStamp(blueOnsetIndex);
+    redOnsetTime = timeStamp(redOnsetIndex);
+    lightOffsetTime = timeStamp(lightOffsetIndex);
     
     cue = cellfun(@(x) str2num(x(4)), eventString(trialOnsetIndex), 'UniformOutput', true);
     reward = strcmp(eventString(rewardIndex), 'Reward');
-    
     
     cueA = cue==1;
     cueB = cue==2;
@@ -79,6 +91,18 @@ for iFile = 1:nFile
     eventTime = [trialOnsetTime, cueOnsetTime, delayOnsetTime, rewardOnsetTime];
     trialResult = sum(trialIndex);
     
+    % find first lick time
+    rewardCheckingTime = zeros(nTrial,1);
+    for iTrial = 1:nTrial
+        rewardTempTime = find(lickOnsetTime>=rewardOnsetTime(iTrial) & lickOnsetTime<trialTime(iTrial+1),1,'first');
+        if ~isempty(rewardTempTime)
+            rewardCheckingTime(iTrial) = timeStamp(rewardTempTime);
+        else
+            rewardCheckingTime(iTrial) = NaN;
+        end
+    end
+    
+    % licking rate histogram
     binSize = 0.01; % unit: second;
     lickBin = (0:binSize:8);
     lickHist = zeros(nTrial,length(lickBin));
@@ -101,8 +125,9 @@ for iFile = 1:nFile
     
     save('Events.mat', ...
         'nTrial', 'trialIndex', 'eventTime', 'trialTime', 'trialResult', ...
-        'cueIndex', 'cueResult', ...
-        'cue', 'reward', 'lickOnsetTime','lickOffsetTime', ...
+        'baseTime', 'taskTime', 'cueIndex', 'cueResult', ...
+        'cue', 'reward', 'lickOnsetTime','lickOffsetTime', 'rewardCheckingTime', ...
+        'blueOnsetTime', 'redOnsetTime', 'lightOffsetTime', ...
         'lickBin','lickMeanConv','lickSemBin','lickSemConv');   
 end
 disp('Done!');
